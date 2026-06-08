@@ -2,6 +2,18 @@ const CHANNEL_ID = 3318002;
 const API_KEY = "EF1GSQD4KCOWGHD4";
 const REFRESH_MS = 60 * 1000;
 
+// Stiahneme širšie okno (senzor meria ~každé 2 min => 8000 pokryje > 10 dní),
+// rozsah pre grafy (dnes / 7 dní) si filtrujeme na strane klienta.
+const RESULTS = 8000;
+const HOUR_MS = 3600000;
+
+// Aktuálne zvolený rozsah a posledné stiahnuté dáta (pre okamžité prepnutie).
+let currentRange = "today"; // "today" | "week"
+let lastFeeds = [];
+
+// Začiatok a počet dní aktuálne zobrazeného rozsahu.
+let view = { start: new Date(), days: 1 };
+
 const el = {
   temp: document.getElementById("temp"),
   humidity: document.getElementById("humidity"),
@@ -17,21 +29,7 @@ let tempChart;
 let humChart;
 
 function apiUrl() {
-  // Dnešná polnoc v lokálnom čase -> "YYYY-MM-DD 00:00:00".
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const start = `${y}-${m}-${d} 00:00:00`;
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  // start + timezone => ThingSpeak vráti len dáta od dnešnej polnoci v našom pásme.
-  return (
-    `https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds.json` +
-    `?api_key=${API_KEY}` +
-    `&start=${encodeURIComponent(start)}` +
-    `&timezone=${encodeURIComponent(tz)}`
-  );
+  return `https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds.json?api_key=${API_KEY}&results=${RESULTS}`;
 }
 
 function fmt(value, decimals) {
@@ -39,13 +37,15 @@ function fmt(value, decimals) {
   return Number.isFinite(n) ? n.toFixed(decimals) : "--";
 }
 
-function isToday(date) {
+// Vypočíta začiatok a počet dní podľa zvoleného rozsahu.
+function computeView() {
   const now = new Date();
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  );
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (currentRange === "week") {
+    start.setDate(start.getDate() - 6);
+    return { start, days: 7 };
+  }
+  return { start, days: 1 };
 }
 
 function setStatus(lastEntryDate) {
@@ -67,9 +67,9 @@ function updateCurrent(feed) {
   setStatus(d);
 }
 
-// Hodina dňa ako desatinné číslo (napr. 6:30 -> 6.5) z lokálneho času.
-function hourOfDay(date) {
-  return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+// X hodnota = počet hodín od začiatku zobrazeného rozsahu.
+function xValue(date) {
+  return (date.getTime() - view.start.getTime()) / HOUR_MS;
 }
 
 function hourLabel(h) {
@@ -78,23 +78,52 @@ function hourLabel(h) {
   return `${hh}:${mm}`;
 }
 
-// Zvislé prerušované sivé čiary na 6:00 a 22:00 (spoločné pre oba grafy).
-const dayMarkersPlugin = {
-  id: "dayMarkers",
-  afterDatasetsDraw(chart) {
+// Popisok osi X aj titulok tooltipu (závisí od rozsahu).
+function xTickLabel(v) {
+  if (view.days === 1) return hourLabel(v);
+  if (Math.abs(v % 24) > 0.01) return ""; // v týždni značíme len polnoci
+  const d = new Date(view.start);
+  d.setDate(d.getDate() + Math.round(v / 24));
+  return d.toLocaleDateString("sk-SK", { weekday: "short", day: "numeric", month: "numeric" });
+}
+
+function xTooltipTitle(v) {
+  const d = new Date(view.start.getTime() + v * HOUR_MS);
+  if (view.days === 1) {
+    return d.toLocaleTimeString("sk-SK", { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleString("sk-SK", {
+    weekday: "short",
+    day: "numeric",
+    month: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Podfarbenie noci (22:00–06:00) jemným chladným pásom na pozadí grafu.
+const nightShadingPlugin = {
+  id: "nightShading",
+  beforeDatasetsDraw(chart) {
     const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+    const days = Math.max(1, Math.round(x.max / 24));
+    const height = bottom - top;
     ctx.save();
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 4]);
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
-    [6, 22].forEach((h) => {
-      const px = x.getPixelForValue(h);
-      if (px < x.left || px > x.right) return;
-      ctx.beginPath();
-      ctx.moveTo(px, top);
-      ctx.lineTo(px, bottom);
-      ctx.stroke();
-    });
+    ctx.fillStyle = "rgba(120, 150, 220, 0.12)";
+
+    const shade = (h0, h1) => {
+      const a = Math.max(0, Math.min(x.max, h0));
+      const b = Math.max(0, Math.min(x.max, h1));
+      if (b <= a) return;
+      const px0 = x.getPixelForValue(a);
+      const px1 = x.getPixelForValue(b);
+      ctx.fillRect(px0, top, px1 - px0, height);
+    };
+
+    for (let d = 0; d < days; d++) {
+      shade(d * 24, d * 24 + 6); // 00:00–06:00
+      shade(d * 24 + 22, d * 24 + 24); // 22:00–24:00
+    }
     ctx.restore();
   },
 };
@@ -134,7 +163,7 @@ function baseOptions(unit) {
         borderWidth: 1,
         padding: 10,
         callbacks: {
-          title: (items) => hourLabel(items[0].parsed.x),
+          title: (items) => xTooltipTitle(items[0].parsed.x),
           label: (c) => ` ${c.parsed.y.toFixed(1)}${unit}`,
         },
       },
@@ -148,8 +177,9 @@ function baseOptions(unit) {
         ticks: {
           color: "#8b93b0",
           stepSize: 3,
+          autoSkip: false,
           maxRotation: 0,
-          callback: (v) => hourLabel(v),
+          callback: (v) => xTickLabel(v),
         },
       },
       y: {
@@ -166,21 +196,34 @@ function setStats(elNode, values, unit) {
     const max = Math.max(...values);
     elNode.textContent = `min ${min.toFixed(1)}${unit}  ·  max ${max.toFixed(1)}${unit}  ·  ${values.length} meraní`;
   } else {
-    elNode.textContent = "Žiadne dáta pre dnešok";
+    elNode.textContent = "Žiadne dáta v rozsahu";
   }
 }
 
+function configureXScale(chart) {
+  const x = chart.options.scales.x;
+  x.max = view.days * 24;
+  x.ticks.stepSize = view.days === 1 ? 3 : 24;
+}
+
 function updateCharts(feeds) {
-  const todays = feeds.filter(
-    (f) => f.field1 != null && isToday(new Date(f.created_at))
+  view = computeView();
+
+  let inRange = feeds.filter(
+    (f) => f.field1 != null && new Date(f.created_at) >= view.start
   );
 
-  const tempPoints = todays.map((f) => ({
-    x: hourOfDay(new Date(f.created_at)),
+  // V týždennom pohľade preriedime dáta (každý druhý bod), nech graf nie je prehustený.
+  if (view.days > 1) {
+    inRange = inRange.filter((_, i) => i % 2 === 0);
+  }
+
+  const tempPoints = inRange.map((f) => ({
+    x: xValue(new Date(f.created_at)),
     y: Number(f.field1),
   }));
-  const humPoints = todays.map((f) => ({
-    x: hourOfDay(new Date(f.created_at)),
+  const humPoints = inRange.map((f) => ({
+    x: xValue(new Date(f.created_at)),
     y: Number(f.field2),
   }));
 
@@ -216,10 +259,12 @@ function updateCharts(feeds) {
         ],
       },
       options: opts,
-      plugins: [dayMarkersPlugin],
+      plugins: [nightShadingPlugin],
     });
+    configureXScale(tempChart);
   } else {
     tempChart.data.datasets[0].data = tempPoints;
+    configureXScale(tempChart);
     tempChart.update();
   }
 
@@ -252,10 +297,12 @@ function updateCharts(feeds) {
         ],
       },
       options: opts,
-      plugins: [dayMarkersPlugin, humidityBandsPlugin],
+      plugins: [nightShadingPlugin, humidityBandsPlugin],
     });
+    configureXScale(humChart);
   } else {
     humChart.data.datasets[0].data = humPoints;
+    configureXScale(humChart);
     humChart.update();
   }
 }
@@ -273,6 +320,7 @@ async function load() {
     }
 
     const feeds = json.feeds || [];
+    lastFeeds = feeds;
     if (feeds.length) {
       updateCurrent(feeds[feeds.length - 1]);
       updateCharts(feeds);
@@ -284,6 +332,16 @@ async function load() {
     console.error(err);
   }
 }
+
+document.querySelectorAll("#range-toggle button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    currentRange = btn.dataset.range;
+    document
+      .querySelectorAll("#range-toggle button")
+      .forEach((b) => b.classList.toggle("active", b === btn));
+    if (lastFeeds.length) updateCharts(lastFeeds);
+  });
+});
 
 load();
 setInterval(load, REFRESH_MS);
