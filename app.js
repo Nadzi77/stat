@@ -167,6 +167,20 @@ function baseOptions(unit) {
           label: (c) => ` ${c.parsed.y.toFixed(1)}${unit}`,
         },
       },
+      zoom: {
+        zoom: {
+          wheel: { enabled: true },
+          drag: {
+            enabled: true,
+            backgroundColor: "rgba(255, 255, 255, 0.08)",
+            borderColor: "rgba(255, 255, 255, 0.25)",
+            borderWidth: 1,
+          },
+          pinch: { enabled: true },
+          mode: "x",
+        },
+        limits: { x: { min: "original", max: "original" } },
+      },
     },
     scales: {
       x: {
@@ -209,14 +223,9 @@ function configureXScale(chart) {
 function updateCharts(feeds) {
   view = computeView();
 
-  let inRange = feeds.filter(
+  const inRange = feeds.filter(
     (f) => f.field1 != null && new Date(f.created_at) >= view.start
   );
-
-  // V týždennom pohľade preriedime dáta (každý druhý bod), nech graf nie je prehustený.
-  if (view.days > 1) {
-    inRange = inRange.filter((_, i) => i % 2 === 0);
-  }
 
   const tempPoints = inRange.map((f) => ({
     x: xValue(new Date(f.created_at)),
@@ -262,6 +271,7 @@ function updateCharts(feeds) {
       plugins: [nightShadingPlugin],
     });
     configureXScale(tempChart);
+    ctx.canvas.addEventListener("dblclick", () => tempChart.resetZoom());
   } else {
     tempChart.data.datasets[0].data = tempPoints;
     configureXScale(tempChart);
@@ -300,6 +310,7 @@ function updateCharts(feeds) {
       plugins: [nightShadingPlugin, humidityBandsPlugin],
     });
     configureXScale(humChart);
+    ctx.canvas.addEventListener("dblclick", () => humChart.resetZoom());
   } else {
     humChart.data.datasets[0].data = humPoints;
     configureXScale(humChart);
@@ -339,6 +350,8 @@ document.querySelectorAll("#range-toggle button").forEach((btn) => {
     document
       .querySelectorAll("#range-toggle button")
       .forEach((b) => b.classList.toggle("active", b === btn));
+    if (tempChart) tempChart.resetZoom();
+    if (humChart) humChart.resetZoom();
     if (lastFeeds.length) updateCharts(lastFeeds);
   });
 });
