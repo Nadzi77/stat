@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Obývačka – teplota</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="title">
+        <span class="dot" id="status-dot"></span>
+        <span id="room-name">Obývačka</span>
+      </div>
+      <div class="updated" id="updated">—</div>
+    </header>
+
+    <section class="hero">
+      <div class="temp-block">
+        <div class="temp-value" id="temp">--<span class="unit">°C</span></div>
+        <div class="temp-label">Aktuálna teplota</div>
+      </div>
+
+      <div class="secondary">
+        <div class="metric">
+          <div class="metric-value" id="humidity">--<span class="unit">%</span></div>
+          <div class="metric-label">Vlhkosť</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric">
+          <div class="metric-value" id="pressure">--<span class="unit">hPa</span></div>
+          <div class="metric-label">Tlak</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="chart-card">
+      <div class="chart-head">
+        <h2>Teplota dnes</h2>
+        <div class="chart-stats" id="temp-stats">—</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="tempChart"></canvas>
+      </div>
+    </section>
+
+    <section class="chart-card">
+      <div class="chart-head">
+        <h2>Vlhkosť dnes</h2>
+        <div class="chart-stats" id="hum-stats">—</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="humChart"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
