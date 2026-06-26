@@ -34,7 +34,9 @@ function apiUrl() {
 
 function fmt(value, decimals) {
   const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(decimals) : "--";
+  if (!Number.isFinite(n)) return "--";
+  // Zaokrúhli a odstráň zbytočné .0 (28.0 -> "28", 28.4 -> "28.4").
+  return parseFloat(n.toFixed(decimals)).toString();
 }
 
 // Vypočíta začiatok a počet dní podľa zvoleného rozsahu.
@@ -164,7 +166,7 @@ function baseOptions(unit) {
         padding: 10,
         callbacks: {
           title: (items) => xTooltipTitle(items[0].parsed.x),
-          label: (c) => ` ${c.parsed.y.toFixed(1)}${unit}`,
+          label: (c) => ` ${fmt(c.parsed.y, 1)}${unit}`,
         },
       },
       zoom: {
@@ -208,7 +210,7 @@ function setStats(elNode, values, unit) {
   if (values.length) {
     const min = Math.min(...values);
     const max = Math.max(...values);
-    elNode.textContent = `min ${min.toFixed(1)}${unit}  ·  max ${max.toFixed(1)}${unit}  ·  ${values.length} meraní`;
+    elNode.textContent = `min ${fmt(min, 1)}${unit}  ·  max ${fmt(max, 1)}${unit}  ·  ${values.length} meraní`;
   } else {
     elNode.textContent = "Žiadne dáta v rozsahu";
   }
@@ -247,7 +249,7 @@ function updateCharts(feeds) {
     grad.addColorStop(1, "rgba(255, 138, 61, 0)");
 
     const opts = baseOptions(" °C");
-    opts.scales.y.ticks.callback = (v) => v + "°";
+    opts.scales.y.ticks.callback = (v) => fmt(v, 1) + "°";
 
     tempChart = new Chart(ctx, {
       type: "line",
@@ -286,7 +288,7 @@ function updateCharts(feeds) {
     grad.addColorStop(1, "rgba(77, 208, 225, 0)");
 
     const opts = baseOptions(" %");
-    opts.scales.y.ticks.callback = (v) => v + "%";
+    opts.scales.y.ticks.callback = (v) => fmt(v, 1) + "%";
 
     humChart = new Chart(ctx, {
       type: "line",
